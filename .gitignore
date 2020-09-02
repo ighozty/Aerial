@@ -1,0 +1,7 @@
+.nova/
+venv/
+ssl/
+__pycache__/
+*.yml
+!*.example.yml
+*.log

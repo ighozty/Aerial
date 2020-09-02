@@ -1,0 +1,6 @@
+Allowed_IPs: ["0.0.0.0", "0.0.0.0"]
+Database:
+  Host: "example.com"
+  Port: 3306
+  Username: "example"
+  Password: "Password1"
