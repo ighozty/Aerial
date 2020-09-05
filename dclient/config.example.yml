@@ -1,0 +1,7 @@
+Token: "Discord Bot Token Here"
+WSHost: "ws://localhost:8765"
+Database:
+  Host: "example.com"
+  Port: 3306
+  Username: "example"
+  Password: "Password1"

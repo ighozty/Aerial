@@ -23,10 +23,13 @@ db = dbconnect(
     password=config["Database"]["Password"],
     database="aerial",
 )
+db.cursor().execute("""UPDATE `accounts` SET `in_use` = '0';""")
+db.commit()
+
 
 # Main WebSocket Handler
 async def wshandle(ws, path):
-    #if ws.remote_address[0] not in config["Allowed_IPs"]:
+    # if ws.remote_address[0] not in config["Allowed_IPs"]:
     if False:
         log.warning("Denied WebSocket Connection from " + ws.remote_address[0])
         await ws.close(code=4000, reason="Unauthorized")
@@ -38,6 +41,14 @@ async def wshandle(ws, path):
     )
     details = c.fetchone()
     if details is None:
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "shutdown",
+                    "content": "There are no free accounts available. Please try again later.",
+                }
+            )
+        )
         await ws.close(code=4001, reason="No Free Accounts")
         return
     c.execute(
@@ -64,19 +75,24 @@ async def wshandle(ws, path):
             }
         )
     )
+    loop.create_task(lib.delay_stop(bot, 5400))
     async for message in ws:
+        log.info("Received WS Message: " + message)
         await lib.process(bot, json.loads(message))
     await bot.close()
     c.execute(
         """UPDATE `accounts` SET `in_use` = '0' WHERE `id` = '%s';""" % details[0]
     )
     db.commit()
+    while cursor.fetchone():
+        pass
+    c.close()
 
 
 async def start():
     await websockets.server.serve(
         wshandle,
-        "188.166.36.137",
+        "0.0.0.0",
         8765,
         ssl=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER).load_cert_chain(
             certfile="ssl/cert.pem", keyfile="ssl/key.pem"

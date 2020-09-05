@@ -2,7 +2,6 @@
 import fortnitepy
 import json
 import asyncio
-from aiohttp import BaseConnector
 from functools import partial
 
 
@@ -80,7 +79,15 @@ class Client(fortnitepy.Client):
 
 async def delay_stop(bot: Client, delay: float):
     await asyncio.sleep(delay)
-    await bot.ws.close(code=4002, reason="Timeout Reached")
+    await bot.ws.send(
+        json.dumps(
+            {
+                "type": "shutdown",
+                "content": "You have reached the 90 minute limit per session. Start a new bot to continue usage.",
+            }
+        )
+    )
+    await bot.ws.close(code=4002, reason="Time Limit Reached")
 
 
 async def process(bot: Client, cmd: dict):
@@ -176,7 +183,7 @@ async def process(bot: Client, cmd: dict):
                 json.dumps(
                     {
                         "type": "fail",
-                        "action": "del_f",
+                        "action": "send_pi",
                         "reason": "not_found",
                         "username": cmd["username"],
                     }
@@ -189,13 +196,19 @@ async def process(bot: Client, cmd: dict):
                 json.dumps(
                     {
                         "type": "fail",
-                        "action": "del_f",
+                        "action": "send_pi",
                         "reason": "not_friends",
                         "username": cmd["username"],
                     }
                 )
             )
             return
+        await user.invite()
+        await bot.ws.send(
+            json.dumps(
+                {"type": "success", "action": "send_pi", "username": cmd["username"]}
+            )
+        )
     elif cmd["type"] == "set_status":
         await bot.set_presence(cmd["value"])
     elif cmd["type"] == "clone":
@@ -227,7 +240,9 @@ async def process(bot: Client, cmd: dict):
             return
         await bot.party.me.edit_and_keep(
             partial(
-                bot.party.me.set_outfit, asset=user.outfit, variants=user.outfit_variants
+                bot.party.me.set_outfit,
+                asset=user.outfit,
+                variants=user.outfit_variants,
             ),
             partial(
                 bot.party.me.set_backpack,
@@ -273,17 +288,22 @@ async def process(bot: Client, cmd: dict):
                 )
             )
         elif cmd["item"] == "backbling":
-            await bot.party.me.edit_and_keep(
-                partial(bot.party.me.set_backpack, cmd["value"])
-            )
+            if cmd.get("value") is None:
+                await bot.party.me.clear_backpack()
+            else:
+                await bot.party.me.edit_and_keep(
+                    partial(bot.party.me.set_backpack, cmd["value"])
+                )
         elif cmd["item"] == "harvesting_tool":
             await bot.party.me.edit_and_keep(
                 partial(bot.party.me.set_pickaxe, cmd["value"])
             )
         elif cmd["item"] == "emote":
-            await bot.party.me.edit_and_keep(
-                partial(bot.party.me.set_emote, cmd["value"])
-            )
+            await bot.party.me.clear_emote()
+            if cmd.get("value") is not None:
+                await bot.party.me.edit_and_keep(
+                    partial(bot.party.me.set_emote, cmd["value"])
+                )
         elif cmd["item"] == "emoji":
             await bot.party.me.edit_and_keep(
                 partial(bot.party.me.set_emoji, cmd["value"])
@@ -313,11 +333,57 @@ async def process(bot: Client, cmd: dict):
                     ),
                 )
             )
+        elif cmd["item"] == "variant":
+            variants = bot.party.me.create_variants(**cmd["payload"])
+            if cmd["cosmetic"] == "outfit":
+                await bot.party.me.edit_and_keep(
+                    partial(bot.party.me.set_outfit, variants=variants)
+                )
+            elif cmd["cosmetic"] == "backbling":
+                await bot.party.me.edit_and_keep(
+                    partial(bot.party.me.set_backpack, variants=variants)
+                )
+            elif cmd["cosmetic"] == "pet":
+                await bot.party.me.edit_and_keep(
+                    partial(bot.party.me.set_pet, variants=variants)
+                )
+            elif cmd["cosmetic"] == "harvesting_tool":
+                await bot.party.me.edit_and_keep(
+                    partial(bot.party.me.set_pickaxe, variants=variants)
+                )
+        elif cmd["item"] == "enlightenment":
+            if cmd["cosmetic"] == "outfit":
+                await bot.party.me.edit_and_keep(
+                    partial(
+                        bot.party.me.set_outfit,
+                        variants=bot.party.me.outfit_variants,
+                        enlightenment=cmd["payload"],
+                    )
+                )
+            elif cmd["cosmetic"] == "backbling":
+                await bot.party.me.edit_and_keep(
+                    partial(
+                        bot.party.me.set_backpack,
+                        variants=bot.party.me.backpack_variants,
+                        enlightenment=cmd["payload"],
+                    )
+                )
         elif cmd["item"] == "platform":
             bot.platform = cmd["value"]
             await bot.restart()
     elif cmd["type"] == "party_action":
-        if not bot.party.me.leader:
+        if cmd["action"] == "set_ready_state":
+            if cmd["value"] == 0:
+                await bot.party.me.set_ready(fortnitepy.ReadyState.NOT_READY)
+            elif cmd["value"] == 1:
+                await bot.party.me.set_ready(fortnitepy.ReadyState.READY)
+            elif cmd["value"] == 2:
+                await bot.party.me.set_ready(fortnitepy.ReadyState.SITTING_OUT)
+        elif cmd["action"] == "leave":
+            await bot.party.me.leave()
+        elif cmd["action"] == "send_msg":
+            await bot.party.send(cmd["content"])
+        elif not bot.party.me.leader:
             await bot.ws.send(json.dumps({"type": "fail", "reason": "not_leader"}))
         elif cmd["action"] == "set_playlist":
             await bot.party.set_playlist(cmd["value"])
@@ -326,13 +392,6 @@ async def process(bot: Client, cmd: dict):
                     {"type": "success", "action": "set_playlist", "value": cmd["value"]}
                 )
             )
-        elif cmd["action"] == "set_ready_state":
-            if cmd["value"] == 0:
-                await bot.party.me.set_ready(fortnitepy.ReadyState.NOT_READY)
-            elif cmd["value"] == 1:
-                await bot.party.me.set_ready(fortnitepy.ReadyState.READY)
-            elif cmd["value"] == 2:
-                await bot.party.me.set_ready(fortnitepy.ReadyState.SITTING_OUT)
         elif cmd["action"] == "kick":
             user = await bot.fetch_profile(cmd["username"])
             if user is None:
@@ -403,5 +462,65 @@ async def process(bot: Client, cmd: dict):
                     }
                 )
             )
+        elif cmd["action"] == "join":
+            user = await bot.fetch_profile(cmd["username"])
+            if user is None:
+                await bot.ws.send(
+                    json.dumps(
+                        {
+                            "type": "fail",
+                            "action": "join",
+                            "reason": "not_found",
+                            "username": cmd["username"],
+                        }
+                    )
+                )
+                return
+            user = bot.get_friend(user.id)
+            if user is None:
+                await bot.ws.send(
+                    json.dumps(
+                        {
+                            "type": "fail",
+                            "action": "join",
+                            "reason": "not_friends",
+                            "username": cmd["username"],
+                        }
+                    )
+                )
+                return
+            try:
+                await user.join_party()
+                await bot.ws.send(
+                    json.dumps(
+                        {
+                            "type": "success",
+                            "action": "join",
+                            "username": cmd["username"],
+                        }
+                    )
+                )
+            except fortnitepy.errors.Forbidden:
+                await bot.ws.send(
+                    json.dumps(
+                        {
+                            "type": "fail",
+                            "action": "join",
+                            "reason": "private",
+                            "username": cmd["username"],
+                        }
+                    )
+                )
         elif cmd["action"] == "leave":
             await bot.party.me.leave()
+    elif cmd["type"] == "restart":
+        await bot.restart()
+        await bot.wait_until_ready()
+        await bot.ws.send(json.dumps({"type": "success", "action": "restart"}))
+    elif cmd["type"] == "stop":
+        await bot.close()
+        await bot.ws.send(
+            json.dumps(
+                {"type": "shutdown", "content": "You requested the bot to shut down."}
+            )
+        )
