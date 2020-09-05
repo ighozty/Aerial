@@ -23,8 +23,11 @@ db = dbconnect(
     password=config["Database"]["Password"],
     database="aerial",
 )
-db.cursor().execute("""UPDATE `accounts` SET `in_use` = '0';""")
+c = db.cursor()
+c.execute("""UPDATE `accounts` SET `in_use` = '0';""")
 db.commit()
+c.close()
+del c
 
 
 # Main WebSocket Handler

@@ -332,7 +332,7 @@ async def command(message: discord.Message, ws):
                         json.dumps(
                             {
                                 "type": "cosmetic_action",
-                                "item": "outfit",
+                                "item": "emote",
                                 "value": cosm["id"],
                             }
                         )

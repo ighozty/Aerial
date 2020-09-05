@@ -2,3 +2,4 @@ discord-py
 websockets
 pyyaml
 requests
+mysql-connector-python

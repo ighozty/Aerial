@@ -7,14 +7,16 @@ import requests
 import logging as log
 import handle
 from yaml import safe_load
+from mysql.connector import connect as dbconnect
 from discord.ext import commands
+from discord.ext import tasks
 
 config = safe_load(open("config.yml", "r"))
 cert = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).load_verify_locations("ssl/cert.pem")
-loop = asyncio.get_event_loop()
 active = {}
 client = commands.AutoShardedBot(
-    command_prefix="a.",
+    command_prefix=["a.", "A."],
+    case_insensitive=True,
     activity=discord.Streaming(
         platform="Twitch",
         name="Fortnite Bots",
@@ -22,6 +24,13 @@ client = commands.AutoShardedBot(
         game="Fortnite Bots",
         url="https://twitch.tv/andre4ik3",
     ),
+)
+db = dbconnect(
+    host=config["Database"]["Host"],
+    port=config["Database"]["Port"],
+    user=config["Database"]["Username"],
+    password=config["Database"]["Password"],
+    database="aerial",
 )
 log.basicConfig(
     filename="dclient.log",
@@ -74,25 +83,51 @@ async def wsconnect(user):
             else:
                 await user.send("```json\n" + json.dumps(cmd) + "```")
 
+
 @client.event
 async def on_message(message: discord.Message):
-    if (type(message.channel) == discord.DMChannel) and (message.author.id in list(active.keys())):
+    if (type(message.channel) == discord.DMChannel) and (
+        message.author.id in list(active.keys())
+    ):
         await handle.command(message, active[message.author.id])
     elif "+startbot" in message.content:
-        await message.channel.send(message.author.mention + " *if you are trying to start Aerial, please do `a.start`!*", delete_after=4)
+        await message.channel.send(
+            message.author.mention
+            + " *if you are trying to start Aerial, please do `a.start`!*",
+            delete_after=4,
+        )
+    elif message.channel.id == 718979003968520283 and "start" in message.content:
+        await wsconnect(message.author)
     else:
         await client.process_commands(message)
 
+
 @client.command()
-async def startbeta(ctx):
+async def start(ctx):
     if ctx.message.author.id in list(active.keys()):
-        await ctx.send(
+        await ctx.message.author.send(
             embed=discord.Embed(title=":x: Bot Already Running!", color=0xE46B6B),
-            delete_after=3,
+            delete_after=10,
         )
     else:
         await wsconnect(ctx.message.author)
 
 
-loop.create_task(client.start(config["Token"]))
-loop.run_forever()
+@tasks.loop(minutes=5.0)
+async def counter():
+    c = await client.fetch_channel(727599283179749466)
+    name = f"{len(client.guilds)} Servers"
+    await c.edit(name=name)
+
+
+@counter.before_loop
+async def before_counter():
+    await client.wait_until_ready()
+
+
+@client.event
+async def on_ready():
+    counter.start()
+
+
+client.run(config["Token"])
