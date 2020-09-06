@@ -73,8 +73,7 @@ async def wsconnect(user):
                         color=0x747F8D,
                     )
                 )
-                active.pop(user.id)
-                await ws.close(code=1000)
+                active.pop(user.id, None)
                 return
             elif cmd["type"] == "fail" or cmd["type"] == "success":
                 await handle.feedback(cmd, user)
@@ -102,7 +101,7 @@ async def on_message(message: discord.Message):
         await client.process_commands(message)
 
 
-@client.command()
+@client.command(aliases=["startbot", "create"])
 async def start(ctx):
     if ctx.message.author.id in list(active.keys()):
         await ctx.message.author.send(
@@ -112,6 +111,14 @@ async def start(ctx):
     else:
         await wsconnect(ctx.message.author)
 
+
+@client.command(aliases=["stop"])
+async def kill(ctx):
+    if ctx.message.author.id in list(active.keys()):
+        await active[ctx.message.author.id].send(json.dumps({"type": "stop"}))
+        await ctx.channel.send(f"<:Accept:719047548219949136> {ctx.message.author.mention} Sent shutdown request to bot!")
+    else:
+        await ctx.channel.send(f"<:Reject:719047548819472446> {ctx.message.author.mention} You do not have an active bot! Type `a.start` to create one!")
 
 @tasks.loop(minutes=5.0)
 async def counter():

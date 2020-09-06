@@ -524,3 +524,4 @@ async def process(bot: Client, cmd: dict):
                 {"type": "shutdown", "content": "You requested the bot to shut down."}
             )
         )
+        await bot.ws.close()
