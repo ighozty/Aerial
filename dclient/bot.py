@@ -32,6 +32,7 @@ db = dbconnect(
     password=config["Database"]["Password"],
     database="aerial",
 )
+db.autocommit = True
 log.basicConfig(
     filename="dclient.log",
     format="DClient @ %(asctime)s | %(levelname)s %(message)s",
@@ -122,9 +123,17 @@ async def kill(ctx):
 
 @tasks.loop(minutes=5.0)
 async def counter():
-    c = await client.fetch_channel(727599283179749466)
-    name = f"{len(client.guilds)} Servers"
-    await c.edit(name=name)
+    c1 = await client.fetch_channel(727599283179749466)
+    c2 = await client.fetch_channel(720787276329910363)
+    c = db.cursor()
+    c.execute("""SELECT COUNT(*) FROM `accounts` WHERE `in_use` = '1';""")
+    running = c.fetchone()[0]
+    c.execute("""SELECT COUNT(*) FROM `accounts`;""")
+    all = c.fetchone()[0]
+    name1 = f"{len(client.guilds)} Servers"
+    name2 = f"{running}/{all} Clients Running"
+    await c1.edit(name=name1)
+    await c2.edit(name=name2)
 
 
 @counter.before_loop

@@ -4,4 +4,5 @@ ssl/
 __pycache__/
 *.yml
 !*.example.yml
+*.sqlite
 *.log

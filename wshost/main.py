@@ -23,9 +23,9 @@ db = dbconnect(
     password=config["Database"]["Password"],
     database="aerial",
 )
+db.autocommit = True
 c = db.cursor()
 c.execute("""UPDATE `accounts` SET `in_use` = '0';""")
-db.commit()
 c.close()
 del c
 
@@ -57,7 +57,6 @@ async def wshandle(ws, path):
     c.execute(
         """UPDATE `accounts` SET `in_use` = '1' WHERE `id` = '%s';""" % details[0]
     )
-    db.commit()
     bot = lib.Client(
         {
             "device_id": details[3],
@@ -86,8 +85,7 @@ async def wshandle(ws, path):
     c.execute(
         """UPDATE `accounts` SET `in_use` = '0' WHERE `id` = '%s';""" % details[0]
     )
-    db.commit()
-    while cursor.fetchone():
+    while c.fetchone():
         pass
     c.close()
 
