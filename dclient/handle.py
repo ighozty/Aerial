@@ -341,6 +341,28 @@ async def command(message: discord.Message, ws):
                         "<:Accept:719047548219949136> Set Emote to " + cosm["name"],
                         delete_after=10,
                     )
+        elif msg[1].lower() == "emoji" or msg[1].lower() == "emoticon":
+            msg[2] = " ".join(msg[2:])
+            cosm = cosmetic(msg[2], "AthenaEmoji")
+            if cosm is None:
+                await message.channel.send(
+                    "<:Reject:719047548819472446> Cannot Find Emoji " + msg[2],
+                    delete_after=10,
+                )
+            else:
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "cosmetic_action",
+                            "item": "emoji",
+                            "value": cosm["id"],
+                        }
+                    )
+                )
+                await message.channel.send(
+                    "<:Accept:719047548219949136> Set Emoji to " + cosm["name"],
+                    delete_after=10,
+                )
         elif (
             msg[1].lower() == "harvesting_tool"
             or msg[1].lower() == "harvestingtool"
@@ -605,6 +627,42 @@ async def command(message: discord.Message, ws):
                     + msg[4],
                     delete_after=10,
                 )
+        elif msg[1].lower() == "platform":
+            if msg[2].lower() not in [
+                "win",
+                "windows",
+                "pc",
+                "mac",
+                "xbox",
+                "xbl",
+                "ps4",
+                "psn",
+                "switch",
+                "swt",
+                "nsw",
+                "android",
+                "and",
+                "ios",
+                "iphone",
+                "mobile",
+            ]:
+                await message.channel.send(
+                    "<:Reject:719047548819472446> Invalid Platform! Platform must be one of: ```\nWINDOWS, PC, MAC, XBOX, PS4, SWITCH, ANDROID, IOS```"
+                )
+                return
+            else:
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "cosmetic_action",
+                            "item": "platform",
+                            "value": msg[2].lower(),
+                        }
+                    )
+                )
+                await message.channel.send(
+                    "<:Accept:719047548219949136> Set Platform to " + msg[2]
+                )
     elif msg[0].lower() == "friend":
         msg[2] = " ".join(msg[2:])
         if msg[1].lower() == "add":
@@ -627,12 +685,16 @@ async def command(message: discord.Message, ws):
     elif msg[0].lower() == "variants":
         if len(msg) < 2:
             return
-        cosm = cosmetic(" ".join(msg[1:]))
+        cosm = cosmetic(" ".join(msg[1:]), "AthenaCharacter")
         if cosm is None:
-            await message.channel.send(
-                "<:Reject:719047548819472446> Cannot Find Cosmetic " + msg[1]
-            )
-            return
+            cosm = cosmetic(" ".join(msg[1:]), "AthenaBackpack")
+            if cosm is None:
+                cosm = cosmetic(" ".join(msg[1:]), "AthenaPickaxe")
+                if cosm is None:
+                    await message.channel.send(
+                        "<:Reject:719047548819472446> Cannot Find Cosmetic " + msg[1]
+                    )
+                    return
         elif "variants" not in list(cosm.keys()):
             await message.channel.send(
                 "<:Reject:719047548819472446> " + cosm["name"] + " has no variants"

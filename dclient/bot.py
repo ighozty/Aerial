@@ -17,6 +17,7 @@ active = {}
 client = commands.AutoShardedBot(
     command_prefix=["a.", "A."],
     case_insensitive=True,
+    help_command=None,
     activity=discord.Streaming(
         platform="Twitch",
         name="Fortnite Bots",
@@ -40,6 +41,21 @@ log.basicConfig(
     level=log.INFO,
 )
 
+# Check WebSocket Connection
+async def wswait(accmsg: discord.Message):
+    await asyncio.sleep(10)
+    if type(accmsg.edited_at) == None:
+        await accmsg.edit(
+            embed=discord.Embed(
+                title="<:Offline:719321200098017330> Bot Offline",
+                description="Cannot establish a WebSocket connection.\nThis is likely because the server is offline.",
+                color=0x747F8D,
+            )
+        )
+        await active[accmsg.author.id].close(code=1000, reason="Timeout")
+        active.pop(accmsg.author.id, None)
+
+
 # Main WebSocket Handler
 async def wsconnect(user):
     try:
@@ -53,6 +69,7 @@ async def wsconnect(user):
         return
     async with websockets.connect(config["WSHost"], ssl=cert) as ws:
         active[user.id] = ws
+        asyncio.get_event_loop().create_task(wswait(accmsg))
         async for message in ws:
             cmd = json.loads(message)
             if cmd["type"] == "account_info":
@@ -82,6 +99,15 @@ async def wsconnect(user):
                 await handle.incoming(cmd, user, client, ws)
             else:
                 await user.send("```json\n" + json.dumps(cmd) + "```")
+    await accmsg.edit(
+        embed=discord.Embed(
+            title="<:Offline:719321200098017330> Bot Offline",
+            description="The WebSocket connection was lost.",
+            color=0x747F8D,
+        )
+    )
+    active.pop(user.id, None)
+    return
 
 
 @client.event
@@ -97,7 +123,13 @@ async def on_message(message: discord.Message):
             delete_after=4,
         )
     elif message.channel.id == 718979003968520283 and "start" in message.content:
-        await wsconnect(message.author)
+        if message.author.id in list(active.keys()):
+            await message.author.send(
+                embed=discord.Embed(title=":x: Bot Already Running!", color=0xE46B6B),
+                delete_after=10,
+            )
+        else:
+            await wsconnect(message.author)
     else:
         await client.process_commands(message)
 
@@ -117,9 +149,32 @@ async def start(ctx):
 async def kill(ctx):
     if ctx.message.author.id in list(active.keys()):
         await active[ctx.message.author.id].send(json.dumps({"type": "stop"}))
-        await ctx.channel.send(f"<:Accept:719047548219949136> {ctx.message.author.mention} Sent shutdown request to bot!")
+        await ctx.channel.send(
+            f"<:Accept:719047548219949136> {ctx.message.author.mention} Sent shutdown request to bot!"
+        )
     else:
-        await ctx.channel.send(f"<:Reject:719047548819472446> {ctx.message.author.mention} You do not have an active bot! Type `a.start` to create one!")
+        await ctx.channel.send(
+            f"<:Reject:719047548819472446> {ctx.message.author.mention} You do not have an active bot! Type `a.start` to create one!"
+        )
+
+
+@client.command()
+async def help(ctx, *, command: str):
+    commands = {
+        "start": "Starts the bot for 90 minutes.",
+        "kill": "Stops the bot outside of DMs.",
+        "help": "Shows this message.",
+    }
+    if command is None:
+        cmdlist = ""
+        for c in commands:
+            cmdlist = f"{cmdlist}`{c}` - {commands[c]}\n"
+        await ctx.send(
+            embed=discord.Embed(
+                title="Aerial Commands", description=cmdlist, color=0xFC5FE2
+            ).set_footer(text="Support Server: https://discord.gg/fn8UfRY")
+        )
+
 
 @tasks.loop(minutes=5.0)
 async def counter():
@@ -144,6 +199,11 @@ async def before_counter():
 @client.event
 async def on_ready():
     counter.start()
+
+@client.event
+async def on_disconnect():
+    for user in list(active.keys()):
+        await active[user].close()
 
 
 client.run(config["Token"])

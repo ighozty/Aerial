@@ -2,6 +2,7 @@
 import fortnitepy
 import json
 import asyncio
+import websockets
 from functools import partial
 
 
@@ -25,7 +26,9 @@ class Client(fortnitepy.Client):
                 elif type(r) == fortnitepy.OutgoingPendingFriend:
                     await r.cancel()
 
-            await self.set_presence("Battle Royale Lobby - 1 / 16")
+            await self.set_presence(
+                "Battle Royale Lobby - {party_size} / {party_max_size}"
+            )
 
             await self.party.me.edit_and_keep(
                 partial(
@@ -55,39 +58,48 @@ class Client(fortnitepy.Client):
 
     async def event_friend_request(self, request):
         if type(request) == fortnitepy.IncomingPendingFriend:
+            try:
+                await self.ws.send(
+                    json.dumps(
+                        {
+                            "type": "incoming_fr",
+                            "name": request.display_name,
+                            "id": request.id,
+                        }
+                    )
+                )
+            except websockets.exceptions.ConnectionClosed:
+                return
+
+    async def event_party_invite(self, invitation: fortnitepy.ReceivedPartyInvitation):
+        try:
             await self.ws.send(
                 json.dumps(
                     {
-                        "type": "incoming_fr",
-                        "name": request.display_name,
-                        "id": request.id,
+                        "type": "incoming_pi",
+                        "name": invitation.sender.display_name,
+                        "id": invitation.party.id,
                     }
                 )
             )
-
-    async def event_party_invite(self, invitation: fortnitepy.ReceivedPartyInvitation):
-        await self.ws.send(
-            json.dumps(
-                {
-                    "type": "incoming_pi",
-                    "name": invitation.sender.display_name,
-                    "id": invitation.party.id,
-                }
-            )
-        )
+        except websockets.exceptions.ConnectionClosed:
+            return
 
 
 async def delay_stop(bot: Client, delay: float):
     await asyncio.sleep(delay)
-    await bot.ws.send(
-        json.dumps(
-            {
-                "type": "shutdown",
-                "content": "You have reached the 90 minute limit per session. Start a new bot to continue usage.",
-            }
+    try:
+        await bot.ws.send(
+            json.dumps(
+                {
+                    "type": "shutdown",
+                    "content": "You have reached the 90 minute limit per session. Start a new bot to continue usage.",
+                }
+            )
         )
-    )
-    await bot.ws.close(code=4002, reason="Time Limit Reached")
+    except websockets.exceptions.ConnectionClosed:
+        return
+    await bot.ws.close(code=1000, reason="Time Limit Reached")
 
 
 async def process(bot: Client, cmd: dict):
@@ -369,8 +381,21 @@ async def process(bot: Client, cmd: dict):
                     )
                 )
         elif cmd["item"] == "platform":
-            bot.platform = cmd["value"]
-            await bot.restart()
+            if cmd["value"] in ["win", "windows", "pc"]:
+                bot.platform = fortnitepy.Platform.WINDOWS
+            elif cmd["value"] == "mac":
+                bot.platform = fortnitepy.Platform.MAC
+            elif cmd["value"] in ["xbox", "xbl"]:
+                bot.platform = fortnitepy.Platform.PLAYSTATION
+            elif cmd["value"] in ["ps4", "psn"]:
+                bot.platform = fortnitepy.Platform.XBOX
+            elif cmd["value"] in ["switch", "swt", "nsw"]:
+                bot.platform = fortnitepy.Platform.SWITCH
+            elif cmd["value"] in ["android", "and"]:
+                bot.platform = fortnitepy.Platform.ANDROID
+            elif cmd["value"] in ["ios", "iphone", "mobile"]:
+                bot.platform = fortnitepy.Platform.IOS
+            await bot.party.me.leave()
     elif cmd["type"] == "party_action":
         if cmd["action"] == "set_ready_state":
             if cmd["value"] == 0:
@@ -518,10 +543,9 @@ async def process(bot: Client, cmd: dict):
         await bot.wait_until_ready()
         await bot.ws.send(json.dumps({"type": "success", "action": "restart"}))
     elif cmd["type"] == "stop":
-        await bot.close()
         await bot.ws.send(
             json.dumps(
                 {"type": "shutdown", "content": "You requested the bot to shut down."}
             )
         )
-        await bot.ws.close()
+        await bot.ws.close(code=1000, reason="Shutdown Request")

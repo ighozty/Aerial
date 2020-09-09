@@ -32,8 +32,7 @@ del c
 
 # Main WebSocket Handler
 async def wshandle(ws, path):
-    # if ws.remote_address[0] not in config["Allowed_IPs"]:
-    if False:
+    if ws.remote_address[0] not in config["Allowed_IPs"]:
         log.warning("Denied WebSocket Connection from " + ws.remote_address[0])
         await ws.close(code=4000, reason="Unauthorized")
         return
@@ -52,7 +51,8 @@ async def wshandle(ws, path):
                 }
             )
         )
-        await ws.close(code=4001, reason="No Free Accounts")
+        log.info("Closed WebSocket Connection - No Free Accounts")
+        await ws.close(code=1000, reason="No Free Accounts")
         return
     c.execute(
         """UPDATE `accounts` SET `in_use` = '1' WHERE `id` = '%s';""" % details[0]
@@ -65,7 +65,7 @@ async def wshandle(ws, path):
         },
         ws,
     )
-    log.info("Claimed Account " + str(details[0]))
+    log.info(f"Took Account {details[0]}")
     loop.create_task(bot.start())
     await bot.wait_until_ready()
     await ws.send(
@@ -79,15 +79,17 @@ async def wshandle(ws, path):
     )
     loop.create_task(lib.delay_stop(bot, 5400))
     async for message in ws:
-        log.info("Received WS Message: " + message)
+        log.info(f"Received Message for {details[0]}: {message}")
         await lib.process(bot, json.loads(message))
+    log.info("Closed WebSocket Connection")
+    log.info(f"Shutting Down Account {details[0]}")
     await bot.close()
     c.execute(
         """UPDATE `accounts` SET `in_use` = '0' WHERE `id` = '%s';""" % details[0]
     )
-    while c.fetchone():
-        pass
+    db.commit()
     c.close()
+    log.info(f"Freed Account {details[0]}")
 
 
 async def start():

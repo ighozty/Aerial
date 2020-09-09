@@ -1,4 +1,5 @@
 .nova/
+.vercel/
 venv/
 ssl/
 __pycache__/
