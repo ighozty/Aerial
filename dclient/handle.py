@@ -39,49 +39,81 @@ async def feedback(cmd: dict, user):
     if cmd["type"] == "success":
         if cmd["action"] == "send_fr":
             await user.send(
-                "<:Accept:719047548219949136> Sent Friend Request to " + cmd["username"]
+                "<:Accept:719047548219949136> Sent Friend Request to "
+                + cmd["username"],
+                delete_after=10,
             )
         elif cmd["action"] == "del_f":
-            await user.send("<:Accept:719047548219949136> Removed " + cmd["username"])
+            await user.send(
+                "<:Accept:719047548219949136> Removed " + cmd["username"],
+                delete_after=10,
+            )
         elif cmd["action"] == "send_pi":
             await user.send(
-                "<:Accept:719047548219949136> Sent Invite to " + cmd["username"]
+                "<:Accept:719047548219949136> Sent Invite to " + cmd["username"],
+                delete_after=10,
             )
         elif cmd["action"] == "clone":
-            await user.send("<:Accept:719047548219949136> Cloned " + cmd["username"])
+            await user.send(
+                "<:Accept:719047548219949136> Cloned " + cmd["username"],
+                delete_after=10,
+            )
+        elif cmd["action"] == "hide":
+            await user.send(
+                "<:Accept:719047548219949136> Hidden " + cmd["username"],
+                delete_after=10,
+            )
+        elif cmd["action"] == "unhide":
+            await user.send(
+                "<:Accept:719047548219949136> Showing " + cmd["username"],
+                delete_after=10,
+            )
         elif cmd["action"] == "set_playlist":
             await user.send(
-                "<:Accept:719047548219949136> Set Playlist to " + cmd["value"]
+                "<:Accept:719047548219949136> Set Playlist to " + cmd["value"],
+                delete_after=10,
             )
         elif cmd["action"] == "kick":
-            await user.send("<:Accept:719047548219949136> Kicked " + cmd["username"])
+            await user.send(
+                "<:Accept:719047548219949136> Kicked " + cmd["username"],
+                delete_after=10,
+            )
         elif cmd["action"] == "promote":
-            await user.send("<:Accept:719047548219949136> Promoted " + cmd["username"])
+            await user.send(
+                "<:Accept:719047548219949136> Promoted " + cmd["username"],
+                delete_after=10,
+            )
     elif cmd["type"] == "fail":
         if cmd["reason"] == "not_found":
             await user.send(
-                "<:Reject:719047548819472446> Cannot Find " + cmd["username"]
+                "<:Reject:719047548819472446> Cannot Find " + cmd["username"],
+                delete_after=10,
             )
         elif cmd["reason"] == "forbidden":
             await user.send(
                 "<:Reject:719047548819472446> Cannot Send Friend Request to "
-                + cmd["username"]
+                + cmd["username"],
+                delete_after=10,
             )
         elif cmd["reason"] == "not_friends":
             await user.send(
-                "<:Reject:719047548819472446> Not Friends with " + cmd["username"]
+                "<:Reject:719047548819472446> Not Friends with " + cmd["username"],
+                delete_after=10,
             )
         elif cmd["reason"] == "not_found":
             await user.send(
-                "<:Reject:719047548819472446> Cannot Find " + cmd["username"]
+                "<:Reject:719047548819472446> Cannot Find " + cmd["username"],
+                delete_after=10,
             )
         elif cmd["reason"] == "not_leader":
             await user.send(
-                "<:Reject:719047548819472446> This Action Requires the Bot to be Party Leader!"
+                "<:Reject:719047548819472446> This Action Requires the Bot to be Party Leader!",
+                delete_after=10,
             )
         elif cmd["action"] == "accept_pi":
             await user.send(
-                "<:Reject:719047548819472446> Cannot Join " + cmd["username"]
+                "<:Reject:719047548819472446> Cannot Join " + cmd["username"],
+                delete_after=10,
             )
 
 
@@ -212,7 +244,8 @@ async def command(message: discord.Message, ws):
     elif msg[0].lower() == "restart" or msg[0].lower() == "reboot":
         await ws.send(json.dumps({"type": "restart"}))
         await message.channel.send(
-            content="<a:Queue:720808283740569620> Restarting...", delete_after=30
+            content="<:Accept:719047548219949136> Restarted Bot",
+            delete_after=10,
         )
     elif msg[0].lower() == "help":
         await message.channel.send(
@@ -256,6 +289,29 @@ async def command(message: discord.Message, ws):
         await ws.send(
             json.dumps({"type": "party_action", "action": "join", "username": msg[1]})
         )
+    elif msg[0].lower() == "invite":
+        msg[1] = " ".join(msg[1:])
+        await ws.send(json.dumps({"type": "send_pi", "username": msg[1]}))
+    elif msg[0].lower() == "hide":
+        if len(msg) == 1:
+            await ws.send(json.dumps({"type": "party_action", "action": "hide"}))
+        else:
+            msg[1] = " ".join(msg[1:])
+            await ws.send(
+                json.dumps(
+                    {"type": "party_action", "action": "hide", "username": msg[1]}
+                )
+            )
+    elif msg[0].lower() == "unhide":
+        if len(msg) == 1:
+            await ws.send(json.dumps({"type": "party_action", "action": "unhide"}))
+        else:
+            msg[1] = " ".join(msg[1:])
+            await ws.send(
+                json.dumps(
+                    {"type": "party_action", "action": "unhide", "username": msg[1]}
+                )
+            )
     elif msg[0].lower() == "set":
         if len(msg) < 3:
             return
@@ -637,6 +693,7 @@ async def command(message: discord.Message, ws):
                 "xbl",
                 "ps4",
                 "psn",
+                "playstation",
                 "switch",
                 "swt",
                 "nsw",

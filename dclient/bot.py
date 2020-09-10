@@ -14,17 +14,11 @@ from discord.ext import tasks
 config = safe_load(open("config.yml", "r"))
 cert = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).load_verify_locations("ssl/cert.pem")
 active = {}
+using = {}
 client = commands.AutoShardedBot(
     command_prefix=["a.", "A."],
     case_insensitive=True,
     help_command=None,
-    activity=discord.Streaming(
-        platform="Twitch",
-        name="Fortnite Bots",
-        details="Fortnite Bots",
-        game="Fortnite Bots",
-        url="https://twitch.tv/andre4ik3",
-    ),
 )
 db = dbconnect(
     host=config["Database"]["Host"],
@@ -44,7 +38,7 @@ log.basicConfig(
 # Check WebSocket Connection
 async def wswait(accmsg: discord.Message):
     await asyncio.sleep(10)
-    if type(accmsg.edited_at) == None:
+    if type(accmsg.edited_at) is None:
         await accmsg.edit(
             embed=discord.Embed(
                 title="<:Offline:719321200098017330> Bot Offline",
@@ -53,7 +47,20 @@ async def wswait(accmsg: discord.Message):
             )
         )
         await active[accmsg.author.id].close(code=1000, reason="Timeout")
-        active.pop(accmsg.author.id, None)
+        active.pop(accmsg.channel.recipient.id, None)
+        using.pop(accmsg.channel.recipient.id, None)
+
+
+# Boost Check
+async def is_boosting(id: int):
+    g = client.get_guild(71884230999880502)
+    member = g.get_member(id)
+    if member is None:
+        return False
+    elif member in g.premium_subscribers:
+        return True
+    else:
+        return False
 
 
 # Main WebSocket Handler
@@ -68,7 +75,10 @@ async def wsconnect(user):
     except discord.Forbidden:
         return
     async with websockets.connect(config["WSHost"], ssl=cert) as ws:
-        active[user.id] = ws
+        if active.get(user.id, None) is None:
+            active[user.id] = [ws]
+        else:
+            active[user.id].append(ws)
         asyncio.get_event_loop().create_task(wswait(accmsg))
         async for message in ws:
             cmd = json.loads(message)
@@ -81,7 +91,12 @@ async def wsconnect(user):
                     embed=discord.Embed(
                         title="<:Online:719038976677380138> " + cmd["username"],
                         color=0xFC5FE2,
-                    ).set_thumbnail(url=img)
+                    )
+                    .set_thumbnail(url=img)
+                    .add_field(
+                        name="Discord Server", value="https://discord.gg/fn8UfRY"
+                    )
+                    .add_field(name="Documentation", value="https://aerial.now.sh/")
                 )
             elif cmd["type"] == "shutdown":
                 await accmsg.edit(
@@ -91,7 +106,11 @@ async def wsconnect(user):
                         color=0x747F8D,
                     )
                 )
-                active.pop(user.id, None)
+                ## Remove websocket from list
+                active.get(user.id, []).remove(ws)
+                ## Remove user from active if no bots are running
+                if active.get(user.id, []) == []:
+                    active.pop(user.id, None)
                 return
             elif cmd["type"] == "fail" or cmd["type"] == "success":
                 await handle.feedback(cmd, user)
@@ -106,7 +125,8 @@ async def wsconnect(user):
             color=0x747F8D,
         )
     )
-    active.pop(user.id, None)
+    if active.get(user.id, []) == []:
+        active.pop(user.id, None)
     return
 
 
@@ -115,13 +135,8 @@ async def on_message(message: discord.Message):
     if (type(message.channel) == discord.DMChannel) and (
         message.author.id in list(active.keys())
     ):
-        await handle.command(message, active[message.author.id])
-    elif "+startbot" in message.content:
-        await message.channel.send(
-            message.author.mention
-            + " *if you are trying to start Aerial, please do `a.start`!*",
-            delete_after=4,
-        )
+        for ws in active[message.author.id]:
+            await handle.command(message, ws)
     elif message.channel.id == 718979003968520283 and "start" in message.content:
         if message.author.id in list(active.keys()):
             await message.author.send(
@@ -141,6 +156,11 @@ async def start(ctx):
             embed=discord.Embed(title=":x: Bot Already Running!", color=0xE46B6B),
             delete_after=10,
         )
+    # elif len(active.get(ctx.message.author.id, [])) >= 3:
+    #    await ctx.message.author.send(
+    #        embed=discord.Embed(title=":x: Account Limit Reached!", color=0xE46B6B),
+    #        delete_after=10,
+    #    )
     else:
         await wsconnect(ctx.message.author)
 
@@ -148,7 +168,8 @@ async def start(ctx):
 @client.command(aliases=["stop"])
 async def kill(ctx):
     if ctx.message.author.id in list(active.keys()):
-        await active[ctx.message.author.id].send(json.dumps({"type": "stop"}))
+        for ws in active[ctx.message.author.id]:
+            await ws.send(json.dumps({"type": "stop"}))
         await ctx.channel.send(
             f"<:Accept:719047548219949136> {ctx.message.author.mention} Sent shutdown request to bot!"
         )
@@ -159,21 +180,20 @@ async def kill(ctx):
 
 
 @client.command()
-async def help(ctx, *, command: str):
+async def help(ctx):
     commands = {
-        "start": "Starts the bot for 90 minutes.",
+        "start": "Starts the bot for 3 hours.",
         "kill": "Stops the bot outside of DMs.",
         "help": "Shows this message.",
     }
-    if command is None:
-        cmdlist = ""
-        for c in commands:
-            cmdlist = f"{cmdlist}`{c}` - {commands[c]}\n"
-        await ctx.send(
-            embed=discord.Embed(
-                title="Aerial Commands", description=cmdlist, color=0xFC5FE2
-            ).set_footer(text="Support Server: https://discord.gg/fn8UfRY")
-        )
+    cmdlist = ""
+    for c in commands:
+        cmdlist = f"{cmdlist}`{c}` - {commands[c]}\n"
+    await ctx.send(
+        embed=discord.Embed(
+            title="Aerial Commands", description=cmdlist, color=0xFC5FE2
+        ).set_footer(text="Support Server: https://discord.gg/fn8UfRY")
+    )
 
 
 @tasks.loop(minutes=5.0)
@@ -200,10 +220,22 @@ async def before_counter():
 async def on_ready():
     counter.start()
 
+
 @client.event
-async def on_disconnect():
-    for user in list(active.keys()):
-        await active[user].close()
+async def on_shard_ready(shard_id: int):
+    await client.change_presence(
+        activity=discord.Streaming(
+            platform="Twitch",
+            name=f"Fortnite Bots | SH{shard_id}",
+            url="https://twitch.tv/andre4ik3",
+        ),
+        shard_id=shard_id,
+    )
 
 
-client.run(config["Token"])
+if __name__ == "__main__":
+    client.run(config["Token"])
+    users = list(active.values())
+    for u in users:
+        for ws in active[u]:
+            asyncio.get_event_loop().create_task(ws.close())

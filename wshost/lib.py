@@ -9,6 +9,8 @@ from functools import partial
 class Client(fortnitepy.Client):
     def __init__(self, details: dict, ws):
         self.ws = ws
+        self.party_hidden = False
+        self.hidden = []
 
         super().__init__(
             auth=fortnitepy.DeviceAuth(**details),
@@ -85,6 +87,28 @@ class Client(fortnitepy.Client):
         except websockets.exceptions.ConnectionClosed:
             return
 
+    async def refresh_hidden(self):
+        if not self.party.me.leader:
+            return
+        elif self.party_hidden:
+            new = bot.party.meta.set_squad_assignments(
+                [{"memberId": bot.user.id, "absoluteMemberIdx": 0}]
+            )
+            await bot.party.patch(updated=new)
+        else:
+            members = []
+            for user in self.party.meta.squad_assignments:
+                if user["memberId"] not in self.hidden:
+                    members.append(user)
+            new = bot.party.meta.set_squad_assignments(members)
+            await bot.party.patch(updated=new)
+
+    async def event_party_member_join(self, member: fortnitepy.PartyMember):
+        await self.refresh_hidden()
+
+    async def event_party_member_leave(self, member: fortnitepy.PartyMember):
+        await self.refresh_hidden()
+
 
 async def delay_stop(bot: Client, delay: float):
     await asyncio.sleep(delay)
@@ -93,7 +117,7 @@ async def delay_stop(bot: Client, delay: float):
             json.dumps(
                 {
                     "type": "shutdown",
-                    "content": "You have reached the 90 minute limit per session. Start a new bot to continue usage.",
+                    "content": "You have reached the 3 hour limit per session. Start a new bot to continue usage.",
                 }
             )
         )
@@ -386,16 +410,16 @@ async def process(bot: Client, cmd: dict):
             elif cmd["value"] == "mac":
                 bot.platform = fortnitepy.Platform.MAC
             elif cmd["value"] in ["xbox", "xbl"]:
-                bot.platform = fortnitepy.Platform.PLAYSTATION
-            elif cmd["value"] in ["ps4", "psn"]:
                 bot.platform = fortnitepy.Platform.XBOX
+            elif cmd["value"] in ["ps4", "psn", "playstation"]:
+                bot.platform = fortnitepy.Platform.PLAYSTATION
             elif cmd["value"] in ["switch", "swt", "nsw"]:
                 bot.platform = fortnitepy.Platform.SWITCH
             elif cmd["value"] in ["android", "and"]:
                 bot.platform = fortnitepy.Platform.ANDROID
             elif cmd["value"] in ["ios", "iphone", "mobile"]:
                 bot.platform = fortnitepy.Platform.IOS
-            await bot.party.me.leave()
+            await bot.restart()
     elif cmd["type"] == "party_action":
         if cmd["action"] == "set_ready_state":
             if cmd["value"] == 0:
@@ -410,6 +434,110 @@ async def process(bot: Client, cmd: dict):
             await bot.party.send(cmd["content"])
         elif not bot.party.me.leader:
             await bot.ws.send(json.dumps({"type": "fail", "reason": "not_leader"}))
+        elif cmd["action"] == "hide":
+            if cmd.get("username", None) is None:
+                bot.party_hidden = True
+                await bot.refresh_hidden()
+                await bot.ws.send(
+                    json.dumps(
+                        {
+                            "type": "success",
+                            "action": "hide",
+                            "username": "everyone except for the bot",
+                        }
+                    )
+                )
+            else:
+                user = await bot.fetch_profile(cmd["username"])
+                if user is None:
+                    await bot.ws.send(
+                        json.dumps(
+                            {
+                                "type": "fail",
+                                "action": "hide",
+                                "reason": "not_found",
+                                "username": cmd["username"],
+                            }
+                        )
+                    )
+                    return
+                user = bot.party.get_member(user.id)
+                if user is None:
+                    await bot.ws.send(
+                        json.dumps(
+                            {
+                                "type": "fail",
+                                "action": "hide",
+                                "reason": "not_in_party",
+                                "username": cmd["username"],
+                            }
+                        )
+                    )
+                    return
+                if user.id not in bot.hidden:
+                    bot.hidden.append(user.id)
+                await bot.refresh_hidden()
+                await bot.ws.send(
+                    json.dumps(
+                        {
+                            "type": "success",
+                            "action": "hide",
+                            "username": cmd["username"],
+                        }
+                    )
+                )
+        elif cmd["action"] == "unhide":
+            if cmd.get("username", None) is None:
+                bot.party_hidden = False
+                await bot.refresh_hidden()
+                await bot.ws.send(
+                    json.dumps(
+                        {
+                            "type": "success",
+                            "action": "unhide",
+                            "username": "everyone in the lobby",
+                        }
+                    )
+                )
+            else:
+                user = await bot.fetch_profile(cmd["username"])
+                if user is None:
+                    await bot.ws.send(
+                        json.dumps(
+                            {
+                                "type": "fail",
+                                "action": "unhide",
+                                "reason": "not_found",
+                                "username": cmd["username"],
+                            }
+                        )
+                    )
+                    return
+                user = bot.party.get_member(user.id)
+                if user is None:
+                    await bot.ws.send(
+                        json.dumps(
+                            {
+                                "type": "fail",
+                                "action": "unhide",
+                                "reason": "not_in_party",
+                                "username": cmd["username"],
+                            }
+                        )
+                    )
+                    return
+                if user.id in bot.hidden:
+                    bot.hidden.remove(user.id)
+                await bot.refresh_hidden()
+                await bot.ws.send(
+                    json.dumps(
+                        {
+                            "type": "success",
+                            "action": "unhide",
+                            "username": cmd["username"],
+                        }
+                    )
+                )
         elif cmd["action"] == "set_playlist":
             await bot.party.set_playlist(cmd["value"])
             await bot.ws.send(
@@ -540,7 +668,6 @@ async def process(bot: Client, cmd: dict):
             await bot.party.me.leave()
     elif cmd["type"] == "restart":
         await bot.restart()
-        await bot.wait_until_ready()
         await bot.ws.send(json.dumps({"type": "success", "action": "restart"}))
     elif cmd["type"] == "stop":
         await bot.ws.send(

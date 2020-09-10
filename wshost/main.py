@@ -77,10 +77,13 @@ async def wshandle(ws, path):
             }
         )
     )
-    loop.create_task(lib.delay_stop(bot, 5400))
-    async for message in ws:
-        log.info(f"Received Message for {details[0]}: {message}")
-        await lib.process(bot, json.loads(message))
+    loop.create_task(lib.delay_stop(bot, 10800))
+    try:
+        async for message in ws:
+            log.info(f"Received Message for {details[0]}: {message}")
+            await lib.process(bot, json.loads(message))
+    except websockets.exceptions.ConnectionClosedError:
+        pass
     log.info("Closed WebSocket Connection")
     log.info(f"Shutting Down Account {details[0]}")
     await bot.close()
