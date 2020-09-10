@@ -80,44 +80,45 @@ async def wsconnect(user):
         else:
             active[user.id].append(ws)
         asyncio.get_event_loop().create_task(wswait(accmsg))
-        async for message in ws:
-            cmd = json.loads(message)
-            if cmd["type"] == "account_info":
-                r = requests.get(
-                    "https://benbotfn.tk/api/v1/cosmetics/br/" + cmd["outfit"]
-                )
-                img = r.json().get("icons", {}).get("icon", "")
-                await accmsg.edit(
-                    embed=discord.Embed(
-                        title="<:Online:719038976677380138> " + cmd["username"],
-                        color=0xFC5FE2,
+        try:
+            async for message in ws:
+                cmd = json.loads(message)
+                if cmd["type"] == "account_info":
+                    r = requests.get(
+                        "https://benbotfn.tk/api/v1/cosmetics/br/" + cmd["outfit"]
                     )
-                    .set_thumbnail(url=img)
-                    .add_field(
-                        name="Discord Server", value="https://discord.gg/fn8UfRY"
+                    img = r.json().get("icons", {}).get("icon", "")
+                    await accmsg.edit(
+                        embed=discord.Embed(
+                            title="<:Online:719038976677380138> " + cmd["username"],
+                            color=0xFC5FE2,
+                        )
+                        .set_thumbnail(url=img)
+                        .add_field(
+                            name="Discord Server", value="https://discord.gg/fn8UfRY"
+                        )
+                        .add_field(name="Documentation", value="https://aerial.now.sh/")
                     )
-                    .add_field(name="Documentation", value="https://aerial.now.sh/")
-                )
-            elif cmd["type"] == "shutdown":
-                await accmsg.edit(
-                    embed=discord.Embed(
-                        title="<:Offline:719321200098017330> Bot Offline",
-                        description=cmd["content"],
-                        color=0x747F8D,
+                elif cmd["type"] == "shutdown":
+                    await accmsg.edit(
+                        embed=discord.Embed(
+                            title="<:Offline:719321200098017330> Bot Offline",
+                            description=cmd["content"],
+                            color=0x747F8D,
+                        )
                     )
-                )
-                ## Remove websocket from list
-                active.get(user.id, []).remove(ws)
-                ## Remove user from active if no bots are running
-                if active.get(user.id, []) == []:
-                    active.pop(user.id, None)
-                return
-            elif cmd["type"] == "fail" or cmd["type"] == "success":
-                await handle.feedback(cmd, user)
-            elif cmd["type"] == "incoming_fr" or cmd["type"] == "incoming_pi":
-                await handle.incoming(cmd, user, client, ws)
-            else:
-                await user.send("```json\n" + json.dumps(cmd) + "```")
+                    active.get(user.id, []).remove(ws)
+                    if active.get(user.id, []) == []:
+                        active.pop(user.id, None)
+                    return
+                elif cmd["type"] == "fail" or cmd["type"] == "success":
+                    await handle.feedback(cmd, user)
+                elif cmd["type"] == "incoming_fr" or cmd["type"] == "incoming_pi":
+                    await handle.incoming(cmd, user, client, ws)
+                else:
+                    await user.send("```json\n" + json.dumps(cmd) + "```")
+        except websockets.exceptions.ConnectionClosedError:
+            pass
     await accmsg.edit(
         embed=discord.Embed(
             title="<:Offline:719321200098017330> Bot Offline",
@@ -125,6 +126,7 @@ async def wsconnect(user):
             color=0x747F8D,
         )
     )
+    active.get(user.id, []).remove(ws)
     if active.get(user.id, []) == []:
         active.pop(user.id, None)
     return

@@ -14,6 +14,7 @@ class Client(fortnitepy.Client):
 
         super().__init__(
             auth=fortnitepy.DeviceAuth(**details),
+            build="++Fortnite+Release-14.10-CL-14276912-Windows",
         )
 
     async def cleanup(self):
@@ -91,17 +92,17 @@ class Client(fortnitepy.Client):
         if not self.party.me.leader:
             return
         elif self.party_hidden:
-            new = bot.party.meta.set_squad_assignments(
-                [{"memberId": bot.user.id, "absoluteMemberIdx": 0}]
+            new = self.party.meta.set_squad_assignments(
+                [{"memberId": seld.user.id, "absoluteMemberIdx": 0}]
             )
-            await bot.party.patch(updated=new)
+            await seld.party.patch(updated=new)
         else:
             members = []
             for user in self.party.meta.squad_assignments:
                 if user["memberId"] not in self.hidden:
                     members.append(user)
-            new = bot.party.meta.set_squad_assignments(members)
-            await bot.party.patch(updated=new)
+            new = self.party.meta.set_squad_assignments(members)
+            await self.party.patch(updated=new)
 
     async def event_party_member_join(self, member: fortnitepy.PartyMember):
         await self.refresh_hidden()
